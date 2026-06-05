@@ -1,0 +1,36 @@
+[project]
+name = "taskstate-vault"
+version = "0.1.0"
+description = "TaskState Vault: persistent task-state, context, filesystem, and index kernel for Codex-style agents."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+license = "MIT"
+authors = [
+  { name = "TaskState Vault contributors" }
+]
+keywords = ["codex", "agent", "task-state", "project-governor", "sqlite", "context"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+
+[project.scripts]
+tsv = "taskstate_vault.cli.main:main"
+taskstate-vault = "taskstate_vault.cli.main:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["taskstate_vault*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+
