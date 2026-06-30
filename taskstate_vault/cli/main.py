@@ -32,7 +32,7 @@ from taskstate_vault.layers.index import (
 from taskstate_vault.modes.router import detect_mode
 from taskstate_vault.mcp_adapter import list_tool_specs
 from taskstate_vault.promotion.manager import propose_promotion
-from taskstate_vault.ui.server import serve_ui
+from taskstate_vault.ui.app_server import serve_ui
 from taskstate_vault.workspaces.registry import init_task_workspace, register_workspace
 
 

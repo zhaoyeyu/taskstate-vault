@@ -60,13 +60,15 @@ tsv
 taskstate-vault
 ```
 
-Start the local read-only UI:
+Start the local operations console:
 
 ```powershell
 tsv --root <TASKSTATE_VAULT_REPO> ui serve
 ```
 
-The UI shows the account index, workspace references, projects, task graph size, execution queue size, blockers, objective changes, task states, run counts, and direct previews of TaskFS files.
+The UI opens at `http://127.0.0.1:8765/` by default. It provides a local-first project operations console with project grouping, task DAG visualization, execution queue management, records, state-file editing, hidden items, archive management, and Chinese/English language switching.
+
+The default local administrator is `admin` with password `12345678`. Change this password from the Settings page before using the console with real project data.
 
 Python SDK:
 
@@ -127,7 +129,7 @@ Runtime state is created under `.taskstate-vault/` and is intentionally ignored 
 - Evidence, artifacts, errors, and object records
 - Project file indexing
 - Context build/explain
-- Local read-only UI
+- Local React-based operations console
 - Public Python SDK facades: `TaskStateVault`, `TaskFS`, `TaskDB`, `ContextKernel`
 - MCP-ready JSON-callable adapter and tool metadata
 - Objective change log
