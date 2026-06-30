@@ -244,56 +244,67 @@ class TaskStateVaultFlowTests(unittest.TestCase):
             context = vault.contextkernel.build_context("project_facade", task["task_id"])
             self.assertEqual(context["profile"], "project_governor")
 
-    def test_ui_groups_projects_hides_resume_and_shows_task_logs(self) -> None:
+    def test_ui_groups_projects_hides_sensitive_and_shows_task_logs(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             paths = TaskStateVaultPaths(root)
             init_workspace(root)
             create_project(paths, "Visible Operations Console", execution_mode="complex_project", project_id="ops_console")
-            create_project(paths, "Resume Materials Demo", execution_mode="complex_project", project_id="resume_materials_demo")
+            create_project(paths, "Sensitive Materials Demo", execution_mode="complex_project", project_id="sensitive_materials_demo")
             create_project(
                 paths,
-                "Career Planning Demo",
+                "Confidential Planning Demo",
                 execution_mode="program_scale",
-                project_id="career_planning_demo",
+                project_id="confidential_planning_demo",
             )
 
             task = create_task_from_queue(paths, "ops_console", 1)
             task_id = task["task_id"]
+            (root / ".taskstate-vault/PROJECTS/ops_console/TASKS" / task_id / "EVIDENCE" / "user_messages").mkdir(parents=True, exist_ok=True)
             register_workspace(paths, root / "ops_workspace", "ops_console", task_id, "Visible operations workspace")
-            register_workspace(paths, root / "resume_workspace", "resume_materials_demo", None, "Resume source workspace")
+            register_workspace(paths, root / "sensitive_workspace", "sensitive_materials_demo", None, "Sensitive source workspace")
+
+            update_preferences(
+                paths,
+                {
+                    "hidden_keywords": ["sensitive\nconfidential\nrestricted"],
+                    "advanced_editor_enabled": ["1"],
+                    "backup_retention": ["5"],
+                    "default_landing": ["/"],
+                },
+            )
 
             from taskstate_vault.kernel.records import add_artifact, add_evidence, log_error
 
-            add_evidence(paths, "ops_console", task_id, "user_messages", "User asked for task-local evidence display.")
+            add_evidence(paths, "ops_console", task_id, "user_messages", "Request asked for task-local evidence display.")
             add_artifact(paths, "ops_console", task_id, str(root / "artifact.txt"), "UI grouping artifact")
             log_error(paths, "ops_console", task_id, "UI grouping correction log")
 
             summary = build_summary(paths)
             visible_project_ids = {project["project_id"] for project in summary["visible_projects"]}
             self.assertIn("ops_console", visible_project_ids)
-            self.assertNotIn("resume_materials_demo", visible_project_ids)
+            self.assertNotIn("sensitive_materials_demo", visible_project_ids)
             self.assertTrue(summary["workspace_groups"])
-            self.assertTrue(all("resume" not in str(item.get("summary", "")).lower() for item in summary["workspaces"]))
+            self.assertTrue(all("sensitive" not in str(item.get("summary", "")).lower() for item in summary["workspaces"]))
 
             dashboard = render_dashboard(paths)
             self.assertIn("项目地图", dashboard)
             self.assertIn("工作区地图", dashboard)
             self.assertIn("ops_console", dashboard)
-            self.assertNotIn("resume_materials_demo", dashboard)
-            self.assertNotIn("Career Planning Demo", dashboard)
-            self.assertNotIn("career_planning_demo", dashboard)
+            self.assertNotIn("sensitive_materials_demo", dashboard)
+            self.assertNotIn("Confidential Planning Demo", dashboard)
+            self.assertNotIn("confidential_planning_demo", dashboard)
             filtered_dashboard = render_dashboard(paths, {"q": ["ops_console"], "visibility": ["active"]})
             self.assertIn('name="q"', filtered_dashboard)
             self.assertIn("ops_console", filtered_dashboard)
-            self.assertNotIn("resume_materials_demo", filtered_dashboard)
+            self.assertNotIn("sensitive_materials_demo", filtered_dashboard)
             self.assertIn("隐藏区", dashboard)
             self.assertIn("登录", dashboard)
 
             advanced_ctx = {"lang": "zh", "authenticated": True, "advanced": True, "username": "admin"}
             advanced_dashboard = render_dashboard(paths, advanced_ctx)
-            self.assertIn("Career Planning Demo", advanced_dashboard)
-            self.assertIn("resume_materials_demo", advanced_dashboard)
+            self.assertIn("Confidential Planning Demo", advanced_dashboard)
+            self.assertIn("sensitive_materials_demo", advanced_dashboard)
             self.assertIn("/actions/project-group/create", advanced_dashboard)
 
             create_project_group(paths, "Experimental Group", "Lab", "tester")
@@ -307,14 +318,14 @@ class TaskStateVaultFlowTests(unittest.TestCase):
             self.assertNotIn("ops_console", {project["project_id"] for project in normal_after_group_hide["visible_projects"]})
             hidden_area = render_dashboard(paths, advanced_ctx)
             self.assertIn("General Renamed", hidden_area)
-            hidden_filter_page = render_hidden_area(paths, ctx=advanced_ctx, query={"q": ["resume"], "type": ["project"]})
+            hidden_filter_page = render_hidden_area(paths, ctx=advanced_ctx, query={"q": ["sensitive"], "type": ["project"]})
             self.assertIn('action="/hidden-area"', hidden_filter_page)
-            self.assertIn("resume_materials_demo", hidden_filter_page)
+            self.assertIn("sensitive_materials_demo", hidden_filter_page)
             self.assertNotIn("ops_console", hidden_filter_page)
-            hidden_workspace_page = render_hidden_area(paths, ctx=advanced_ctx, query={"q": ["resume"], "type": ["workspace"]})
+            hidden_workspace_page = render_hidden_area(paths, ctx=advanced_ctx, query={"q": ["sensitive"], "type": ["workspace"]})
             self.assertIn("隐藏工作区引用", hidden_workspace_page)
-            self.assertIn("resume_materials_demo", hidden_workspace_page)
-            self.assertIn("Resume source workspace", hidden_workspace_page)
+            self.assertIn("sensitive_materials_demo", hidden_workspace_page)
+            self.assertIn("Sensitive source workspace", hidden_workspace_page)
             set_project_group_hidden(paths, "General Renamed", False, "tester")
             archive_project_group(paths, "General Renamed", "test group archive", "tester")
             archived_group_summary = build_summary(paths, advanced_ctx)
@@ -322,8 +333,8 @@ class TaskStateVaultFlowTests(unittest.TestCase):
             archived_workspace_page = render_archive(paths, ctx=advanced_ctx, query={"type": ["workspace"]})
             self.assertIn("归档工作区引用", archived_workspace_page)
             self.assertIn("ops_console", archived_workspace_page)
-            archived_group_evidence_page = render_archive(paths, ctx=advanced_ctx, query={"type": ["evidence"], "q": ["User asked"]})
-            self.assertIn("User asked for task-local evidence display.", archived_group_evidence_page)
+            archived_group_evidence_page = render_archive(paths, ctx=advanced_ctx, query={"type": ["evidence"], "q": ["Request asked"]})
+            self.assertIn("Request asked for task-local evidence display.", archived_group_evidence_page)
             archived_group_artifact_page = render_archive(paths, ctx=advanced_ctx, query={"type": ["artifact"], "q": ["UI grouping artifact"]})
             self.assertIn("UI grouping artifact", archived_group_artifact_page)
             archived_group_log_page = render_archive(paths, ctx=advanced_ctx, query={"type": ["log"], "q": ["UI grouping correction"]})
@@ -373,11 +384,11 @@ class TaskStateVaultFlowTests(unittest.TestCase):
             registry_after_project_delete = read_jsonl(root / ".taskstate-vault/project_registry.jsonl")
             self.assertFalse(any(record.get("project_id") == "ui_created_project" for record in registry_after_project_delete))
 
-            create_project(paths, "Secret Ledger Project", execution_mode="complex_project", project_id="secret_ops_project")
+            create_project(paths, "Restricted Ledger Project", execution_mode="complex_project", project_id="restricted_ops_project")
             update_preferences(
                 paths,
                 {
-                    "hidden_keywords": ["secret\nconfidential"],
+                    "hidden_keywords": ["restricted\nconfidential"],
                     "deletion_confirmation_strength": ["strict"],
                     "backup_retention": ["20"],
                     "advanced_editor_enabled": ["1"],
@@ -386,15 +397,15 @@ class TaskStateVaultFlowTests(unittest.TestCase):
             )
             settings_page = render_settings(paths, ctx=advanced_ctx)
             self.assertIn("自动隐藏关键词", settings_page)
-            self.assertIn("secret", settings_page)
+            self.assertIn("restricted", settings_page)
             self.assertIn("删除确认强度", settings_page)
             self.assertEqual(t(advanced_ctx, "msg_project_archived"), "项目已归档。")
             self.assertEqual(_localized_exception_message(advanced_ctx, ValueError("Project title is required.")), "项目标题不能为空。")
             self.assertEqual(_localized_exception_message({"lang": "en"}, ValueError("Project title is required.")), "Project title is required.")
-            secret_normal = build_summary(paths, {"lang": "zh", "authenticated": False, "advanced": False})
-            self.assertNotIn("secret_ops_project", {project["project_id"] for project in secret_normal["visible_projects"]})
-            secret_advanced = build_summary(paths, advanced_ctx)
-            self.assertIn("secret_ops_project", {project["project_id"] for project in secret_advanced["visible_projects"]})
+            restricted_normal = build_summary(paths, {"lang": "zh", "authenticated": False, "advanced": False})
+            self.assertNotIn("restricted_ops_project", {project["project_id"] for project in restricted_normal["visible_projects"]})
+            restricted_advanced = build_summary(paths, advanced_ctx)
+            self.assertIn("restricted_ops_project", {project["project_id"] for project in restricted_advanced["visible_projects"]})
 
             orphan_task = "task_orphan_delete"
             orphan_root = root / f".taskstate-vault/PROJECTS/ops_console/TASKS/{orphan_task}/CURRENT"
