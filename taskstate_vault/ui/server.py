@@ -4669,12 +4669,13 @@ def _render_graph_node(paths: TaskStateVaultPaths, project_id: str, node_id: str
     if task and task.get("state_path"):
         state_action = _edit_link(paths, task["state_path"], ctx)
     child_html = "".join(_render_graph_node(paths, project_id, child_id, graph_model, task_lookup, seen, ctx, allowed) for child_id in graph_model["children"].get(node_id, []))
+    tree_children = f'<div class="tree-children">{child_html}</div>' if child_html else ""
     return (
         "<div class='tree-node'>"
         f"<div class='meta'><strong>{esc(title)}</strong><span class='pill'>{esc(node_type)}</span><span class='pill'>{esc(status)}</span>{action}{state_action}</div>"
         f"<div class='subtle'>{esc(node_id)}</div>"
         f"<p>{esc(node.get('objective', ''))}</p>"
-        f"{f'<div class=\"tree-children\">{child_html}</div>' if child_html else ''}"
+        f"{tree_children}"
         "</div>"
     )
 
