@@ -418,7 +418,7 @@ Open:
 http://127.0.0.1:8765/
 ```
 
-The UI shows account objects, workspace references, projects, task graph size, queue size, blockers, objective changes, task states, run counts, and TaskFS file previews.
+The UI is a local operations console for projects, task DAGs, queues, logs, evidence, artifacts, hidden items, archives, and TaskFS state files. It supports Chinese and English interfaces, local login, normal and advanced permissions, and structured editing with raw file editing as an advanced fallback.
 
 ### 10. Use the Python SDK / 使用 Python SDK
 
@@ -515,4 +515,3 @@ context = call_tool(
 English:
 
 Replace `<TASKSTATE_VAULT_REPO>` in `docs/CODEX_CUSTOM_INSTRUCTIONS_DRAFT.md` with the absolute path to your local repository, then place the result in Codex custom instructions. At task start, Codex reads `docs/CODEX_USAGE_GUIDE.md` and uses TaskState Vault for complex task state management.
-
