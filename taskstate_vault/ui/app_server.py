@@ -30,14 +30,11 @@ SUPPORTED_LANGS = {"zh", "en"}
 DEFAULT_ADMIN_USERNAME = "admin"
 DEFAULT_ADMIN_PASSWORD = "12345678"
 SENSITIVE_KEYWORDS = {
-    "resume",
-    "cv",
-    "career",
-    "job search",
-    "career planning",
-    "简历",
-    "求职",
-    "职业规划",
+    "private",
+    "personal",
+    "sensitive",
+    "confidential",
+    "restricted",
 }
 
 
@@ -687,8 +684,8 @@ def project_category(project_id: str, manifest: dict[str, Any]) -> dict[str, str
     haystack = f"{project_id} {title}".lower()
     if "taskstate" in haystack:
         return {"section": "TaskState Vault", "name": "Core Product", "path": "TaskState Vault / Core Product"}
-    if "resume" in haystack or "career" in haystack or "job" in haystack or "简历" in haystack or "职业" in haystack:
-        return {"section": "Private Materials", "name": "Resume And Career", "path": "Private Materials / Resume And Career"}
+    if any(keyword in haystack for keyword in SENSITIVE_KEYWORDS):
+        return {"section": "Sensitive Materials", "name": "Restricted", "path": "Sensitive Materials / Restricted"}
     if "alpha" in haystack or "ops" in haystack:
         return {"section": "Product Labs", "name": "Operations Tools", "path": "Product Labs / Operations Tools"}
     if "research" in haystack:

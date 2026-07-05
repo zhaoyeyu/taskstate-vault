@@ -28,19 +28,13 @@ from taskstate_vault.layers.index import add_account_object
 
 
 MAX_FILE_PREVIEW_BYTES = 256_000
-HIDDEN_CATEGORY_IDS = {"resume", "career_planning"}
+HIDDEN_CATEGORY_IDS = {"sensitive", "restricted_materials"}
 DEFAULT_HIDDEN_KEYWORDS = [
-    "resume",
-    "cv",
-    "ats",
-    "career",
-    "job search",
-    "career planning",
-    "职业",
-    "简历",
-    "求职",
-    "职业规划",
-    "职业转型",
+    "private",
+    "personal",
+    "sensitive",
+    "confidential",
+    "restricted",
 ]
 PROJECT_DISPLAY_ALIASES: dict[str, str] = {}
 PROJECT_TITLE_ALIASES: dict[str, str] = {}
@@ -4358,15 +4352,13 @@ def _project_category(project_id: str, manifest: dict[str, Any]) -> dict[str, st
         return {"id": _slug(configured_group), "name": configured_group, "section": str(manifest.get("project_section") or "Project Group")}
     title = str(manifest.get("title", ""))
     text = f"{project_id} {title}".lower()
-    if _looks_resume_related(text):
-        return {"id": "resume", "name": "Resume Materials", "section": "hidden"}
+    if _looks_sensitive_related(text):
+        return {"id": "sensitive", "name": "Sensitive Materials", "section": "hidden"}
     if "taskstate_vault" in text or "taskstate vault" in text or "task_intent" in text:
         section = "Research" if "research" in text or "needs" in text or "direction" in text else "Core"
         return {"id": "taskstate", "name": "TaskState Vault", "section": section}
     if "alphaops" in text:
         return {"id": "alphaops", "name": "AlphaOps", "section": "Product"}
-    if "career" in text or "job" in text:
-        return {"id": "applied_ai", "name": "Applied AI Systems", "section": "Program"}
     if "enterprise_agent" in text or "enterprise agent" in text:
         return {"id": "enterprise_agent", "name": "Enterprise Agent", "section": "Framework"}
     return {"id": "other", "name": "Other Projects", "section": "General"}
@@ -4390,7 +4382,7 @@ def _looks_sensitive_related(text: str, paths: TaskStateVaultPaths | None = None
     return any(token.lower() in lowered for token in _hidden_keywords(paths))
 
 
-def _looks_resume_related(text: str, paths: TaskStateVaultPaths | None = None) -> bool:
+def _looks_private_topic_related(text: str, paths: TaskStateVaultPaths | None = None) -> bool:
     return _looks_sensitive_related(text, paths)
 
 
@@ -4400,7 +4392,7 @@ def _is_hidden_workspace(workspace: dict[str, Any], project_by_id: dict[str, dic
         str(workspace.get(key, ""))
         for key in ["summary", "workspace_path", "task_id", "project_id"]
     )
-    if _looks_resume_related(workspace_text, paths):
+    if _looks_private_topic_related(workspace_text, paths):
         return True
     return bool(project and (project.get("hidden") or project.get("archived_group")))
 
