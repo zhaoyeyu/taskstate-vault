@@ -7,7 +7,7 @@ from taskstate_vault.core import yamlish
 from taskstate_vault.core.db import init_kernel_db, init_project_db, upsert_project
 from taskstate_vault.core.events import append_event
 from taskstate_vault.core.ids import make_id, slugify
-from taskstate_vault.core.io import append_jsonl, read_jsonl, read_text, write_text
+from taskstate_vault.core.io import append_jsonl, read_jsonl
 from taskstate_vault.core.paths import TaskStateVaultPaths, TASKSTATE_VAULT_DIR
 from taskstate_vault.core.timeutil import now_iso
 from taskstate_vault.governor.files import ensure_project_layout, project_db, project_dir, project_event_log

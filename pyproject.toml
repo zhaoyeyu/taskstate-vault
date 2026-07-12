@@ -19,6 +19,12 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
 ]
 
+[project.optional-dependencies]
+dev = [
+  "build>=1.2",
+  "ruff>=0.15",
+]
+
 [project.scripts]
 tsv = "taskstate_vault.cli.main:main"
 taskstate-vault = "taskstate_vault.cli.main:main"
@@ -35,5 +41,8 @@ include = ["taskstate_vault*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/test_taskstate_vault_flow.py" = ["E402"]
 
 

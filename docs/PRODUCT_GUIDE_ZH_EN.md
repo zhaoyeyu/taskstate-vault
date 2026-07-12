@@ -386,7 +386,7 @@ tsv --root <TASKSTATE_VAULT_ROOT> context build --project project_demo --task <T
 
 This loads context according to the execution mode, including project intent, project model, execution queue, task state, next action, and task-level imported information.
 
-### 9. Use the Local Read-Only Web UI / 使用本地只读 Web UI
+### 9. Use the Authenticated Local Operations Console / 使用需登录的本地运行控制台
 
 中文：
 
@@ -404,6 +404,14 @@ http://127.0.0.1:8765/
 
 UI 可以查看账户对象、workspace 引用、项目、任务图数量、队列数量、阻塞项、目标变更、任务状态、运行数量和 TaskFS 文件预览。
 
+首次启动时，终端会输出本地 `admin` 账号的随机初始密码。登录后请在设置中更换；若遗失，可运行：
+
+```powershell
+tsv --root <TASKSTATE_VAULT_ROOT> ui reset-admin-password
+```
+
+默认只允许绑定回环地址。只有显式添加 `--allow-network` 才能监听局域网地址，并且应放在可信的 TLS 反向代理之后。
+
 English:
 
 Start the UI:
@@ -419,6 +427,8 @@ http://127.0.0.1:8765/
 ```
 
 The UI is a local operations console for projects, task DAGs, queues, logs, evidence, artifacts, hidden items, archives, and TaskFS state files. It supports Chinese and English interfaces, local login, normal and advanced permissions, and structured editing with raw file editing as an advanced fallback.
+
+On first launch, the terminal prints a generated password for the local `admin` account. Change it in Settings after signing in. If it is lost, run `tsv --root <TASKSTATE_VAULT_ROOT> ui reset-admin-password`. The server binds only to a loopback address unless `--allow-network` is supplied explicitly; network mode should sit behind a trusted TLS-capable proxy.
 
 ### 10. Use the Python SDK / 使用 Python SDK
 

@@ -10,7 +10,7 @@ from taskstate_vault.core.db import (
     upsert_index_entry,
 )
 from taskstate_vault.core.ids import make_id
-from taskstate_vault.core.io import append_jsonl, read_jsonl
+from taskstate_vault.core.io import append_jsonl
 from taskstate_vault.core.paths import TaskStateVaultPaths
 from taskstate_vault.core.timeutil import now_iso
 from taskstate_vault.kernel.records import add_object

@@ -1,1 +1,1 @@
-"""Read-only local UI for TaskState Vault."""
+"""Authenticated local operations console for TaskState Vault."""

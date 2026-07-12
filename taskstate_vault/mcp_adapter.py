@@ -1,11 +1,11 @@
-from __future__ import annotations
-
 """MCP-ready adapter layer for TaskState Vault.
 
 This module intentionally avoids a hard dependency on a specific MCP SDK. It
 exposes stable JSON-callable functions that can be wrapped by an MCP server or
 daemon later without changing the core implementation.
 """
+
+from __future__ import annotations
 
 from typing import Any
 

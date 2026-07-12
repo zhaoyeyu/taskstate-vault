@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import difflib
 import json
+import logging
 import mimetypes
 import secrets
 import shutil
+import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -13,22 +15,26 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from taskstate_vault.core import yamlish
 from taskstate_vault.core.ids import make_id
-from taskstate_vault.core.io import read_json, read_jsonl, read_text, rewrite_jsonl, write_json, write_text
+from taskstate_vault.core.io import read_jsonl, read_text, rewrite_jsonl, write_text
 from taskstate_vault.core.paths import TaskStateVaultPaths
 from taskstate_vault.core.timeutil import now_iso
-from taskstate_vault.governor.files import graph_path, project_event_log, queue_path
+from taskstate_vault.governor.files import queue_path
 from taskstate_vault.governor.graph import read_graph, update_node, write_graph
 from taskstate_vault.governor.manager import create_project
 from taskstate_vault.governor.queue import reschedule_queue
 from taskstate_vault.kernel.task import create_task_from_queue
 from taskstate_vault.ui import server as legacy
+from taskstate_vault.ui.security import is_loopback_host
 
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 DEFAULT_LANG = "zh"
 SUPPORTED_LANGS = {"zh", "en"}
-DEFAULT_ADMIN_USERNAME = "admin"
-DEFAULT_ADMIN_PASSWORD = "12345678"
+MAX_JSON_BODY_BYTES = 1_000_000
+SESSION_TTL_SECONDS = 12 * 60 * 60
+LOGIN_WINDOW_SECONDS = 60
+MAX_LOGIN_ATTEMPTS = 8
+LOGGER = logging.getLogger(__name__)
 SENSITIVE_KEYWORDS = {
     "private",
     "personal",
@@ -48,6 +54,10 @@ TRANSLATIONS = {
         "cycle": "不能创建环形依赖。",
         "unsafe_path": "文件路径不在允许范围内。",
         "archive_first": "永久删除前必须先归档。",
+        "invalid_origin": "请求来源不受信任。",
+        "rate_limited": "登录尝试过多，请稍后重试。",
+        "request_too_large": "请求内容过大。",
+        "server_error": "服务器无法完成请求。",
         "ok": "已保存。",
     },
     "en": {
@@ -59,6 +69,10 @@ TRANSLATIONS = {
         "cycle": "Dependency would create a cycle.",
         "unsafe_path": "File path is outside allowed roots.",
         "archive_first": "Archive before permanent delete.",
+        "invalid_origin": "The request origin is not trusted.",
+        "rate_limited": "Too many login attempts. Try again shortly.",
+        "request_too_large": "The request body is too large.",
+        "server_error": "The server could not complete the request.",
         "ok": "Saved.",
     },
 }
@@ -72,8 +86,21 @@ class ApiError(Exception):
         self.message = message or code
 
 
-def serve_ui(paths: TaskStateVaultPaths, host: str = "127.0.0.1", port: int = 8765) -> None:
-    legacy._ensure_ui_state(paths)
+def serve_ui(
+    paths: TaskStateVaultPaths,
+    host: str = "127.0.0.1",
+    port: int = 8765,
+    *,
+    allow_network: bool = False,
+) -> None:
+    if not is_loopback_host(host) and not allow_network:
+        raise ValueError("Refusing a non-loopback UI bind without --allow-network.")
+    if not is_loopback_host(host):
+        print("WARNING: network mode uses plain HTTP; place the console behind a trusted TLS proxy.")
+    initial_password = legacy.initialize_admin_account(paths)
+    if initial_password:
+        print(f"Initial admin password: {initial_password}")
+        print("Change it from Settings after the first login.")
     handler = _handler_factory(paths)
     server = ThreadingHTTPServer((host, port), handler)
     print(f"TaskState Vault Console: http://{host}:{port}")
@@ -82,6 +109,7 @@ def serve_ui(paths: TaskStateVaultPaths, host: str = "127.0.0.1", port: int = 87
 
 def _handler_factory(paths: TaskStateVaultPaths) -> type[BaseHTTPRequestHandler]:
     sessions: dict[str, dict[str, Any]] = {}
+    login_attempts: dict[str, list[float]] = {}
 
     class TaskStateVaultAppHandler(BaseHTTPRequestHandler):
         server_version = "TaskStateVaultConsole/0.1"
@@ -105,14 +133,20 @@ def _handler_factory(paths: TaskStateVaultPaths) -> type[BaseHTTPRequestHandler]
             parsed = urlparse(self.path)
             try:
                 if parsed.path.startswith("/api/"):
+                    if method in {"POST", "PATCH", "DELETE"}:
+                        self._validate_request_origin()
                     payload = self._route_api(method, parsed.path, parse_qs(parsed.query))
                     self._send_json(payload)
                     return
                 self._serve_static(parsed.path)
             except ApiError as exc:
                 self._send_json({"ok": False, "error": {"code": exc.code, "message": _msg(self._ctx(), exc.code, exc.message)}}, exc.status)
-            except Exception as exc:  # pragma: no cover - defensive local UI boundary
-                self._send_json({"ok": False, "error": {"code": "server_error", "message": str(exc)}}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            except Exception:  # pragma: no cover - defensive local UI boundary
+                LOGGER.exception("TaskState Vault UI request failed")
+                self._send_json(
+                    {"ok": False, "error": {"code": "server_error", "message": _msg(self._ctx(), "server_error")}},
+                    HTTPStatus.INTERNAL_SERVER_ERROR,
+                )
 
         def _route_api(self, method: str, path: str, query: dict[str, list[str]]) -> dict[str, Any]:
             ctx = self._ctx()
@@ -124,13 +158,26 @@ def _handler_factory(paths: TaskStateVaultPaths) -> type[BaseHTTPRequestHandler]
             if method == "GET" and path == "/api/session":
                 return {"ok": True, "data": ctx}
             if method == "POST" and path == "/api/session/login":
+                client = str(self.client_address[0])
+                now = time.monotonic()
+                attempts = [stamp for stamp in login_attempts.get(client, []) if now - stamp < LOGIN_WINDOW_SECONDS]
+                if len(attempts) >= MAX_LOGIN_ATTEMPTS:
+                    raise ApiError(HTTPStatus.TOO_MANY_REQUESTS, "rate_limited")
                 username = str(body.get("username", ""))
                 password = str(body.get("password", ""))
                 if not legacy._verify_account(paths, username, password):
+                    attempts.append(now)
+                    login_attempts[client] = attempts
                     raise ApiError(HTTPStatus.UNAUTHORIZED, "login_failed")
+                login_attempts.pop(client, None)
                 token = secrets.token_urlsafe(32)
-                sessions[token] = {"username": username, "advanced": False, "lang": ctx["lang"]}
-                self._set_cookie("tsv_session", token)
+                sessions[token] = {
+                    "username": username,
+                    "advanced": False,
+                    "lang": ctx["lang"],
+                    "expires_at": time.monotonic() + SESSION_TTL_SECONDS,
+                }
+                self._set_cookie("tsv_session", token, max_age=SESSION_TTL_SECONDS)
                 return {"ok": True, "data": self._ctx(token)}
             if method == "POST" and path == "/api/session/logout":
                 token = self._cookies().get("tsv_session", "")
@@ -154,16 +201,21 @@ def _handler_factory(paths: TaskStateVaultPaths) -> type[BaseHTTPRequestHandler]
                 return {"ok": True, "data": self._ctx(token)}
             if method == "POST" and path == "/api/session/password":
                 _require_login(ctx)
-                legacy._change_password(paths, str(ctx["username"]), str(body.get("oldPassword", "")), str(body.get("newPassword", "")), str(body.get("repeatPassword", "")))
+                try:
+                    legacy._change_password(paths, str(ctx["username"]), str(body.get("oldPassword", "")), str(body.get("newPassword", "")), str(body.get("repeatPassword", "")))
+                except ValueError as exc:
+                    raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_password", str(exc)) from exc
                 return {"ok": True, "data": {"message": _msg(ctx, "ok")}}
 
             if method == "GET" and path == "/api/projects":
+                _require_login(ctx)
                 return {"ok": True, "data": list_projects(paths, ctx, query)}
             if method == "POST" and path == "/api/projects":
                 _require_login(ctx)
                 project = create_project(paths, str(body.get("title", "")), execution_mode=str(body.get("executionMode") or "complex_project"), project_id=str(body.get("projectId") or "") or None, workspace_path=body.get("workspace") or None)
                 return {"ok": True, "data": project}
             if len(parts) == 3 and parts[:2] == ["api", "projects"] and method == "GET":
+                _require_login(ctx)
                 return {"ok": True, "data": project_detail(paths, parts[2], ctx)}
             if len(parts) == 4 and parts[:2] == ["api", "projects"] and parts[3] == "visibility" and method == "POST":
                 _require_advanced(ctx)
@@ -195,6 +247,7 @@ def _handler_factory(paths: TaskStateVaultPaths) -> type[BaseHTTPRequestHandler]
                 return {"ok": True, "data": graph_payload(paths, parts[2], ctx)}
 
             if len(parts) == 4 and parts[:2] == ["api", "tasks"] and method == "GET":
+                _require_login(ctx)
                 return {"ok": True, "data": task_detail(paths, parts[2], parts[3], ctx)}
             if len(parts) == 4 and parts[:2] == ["api", "tasks"] and method == "PATCH":
                 _require_login(ctx)
@@ -225,6 +278,7 @@ def _handler_factory(paths: TaskStateVaultPaths) -> type[BaseHTTPRequestHandler]
                 return {"ok": True, "data": create_task_from_queue(paths, parts[2], int(body.get("rank") or 1))}
 
             if method == "GET" and path == "/api/records":
+                _require_login(ctx)
                 return {"ok": True, "data": records_payload(paths, ctx, query)}
             if method == "GET" and path == "/api/hidden":
                 _require_advanced(ctx)
@@ -233,6 +287,7 @@ def _handler_factory(paths: TaskStateVaultPaths) -> type[BaseHTTPRequestHandler]
                 _require_advanced(ctx)
                 return {"ok": True, "data": archive_payload(paths, ctx)}
             if method == "GET" and path == "/api/files":
+                _require_advanced(ctx)
                 return {"ok": True, "data": list_state_files(paths, ctx, query)}
             if method == "POST" and path == "/api/files/read":
                 _require_advanced(ctx)
@@ -252,6 +307,7 @@ def _handler_factory(paths: TaskStateVaultPaths) -> type[BaseHTTPRequestHandler]
                 write_text(target, content)
                 return {"ok": True, "data": {"path": str(target), "backup": str(backup), "message": _msg(ctx, "ok")}}
             if method == "GET" and path == "/api/settings":
+                _require_login(ctx)
                 return {"ok": True, "data": {"preferences": legacy._load_preferences(paths), "session": ctx}}
             if method == "POST" and path == "/api/settings":
                 _require_login(ctx)
@@ -263,9 +319,14 @@ def _handler_factory(paths: TaskStateVaultPaths) -> type[BaseHTTPRequestHandler]
             raise ApiError(HTTPStatus.NOT_FOUND, "not_found")
 
         def _json_body(self) -> dict[str, Any]:
-            length = int(self.headers.get("Content-Length") or "0")
+            try:
+                length = int(self.headers.get("Content-Length") or "0")
+            except ValueError as exc:
+                raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_json") from exc
             if length <= 0:
                 return {}
+            if length > MAX_JSON_BODY_BYTES:
+                raise ApiError(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "request_too_large")
             raw = self.rfile.read(length).decode("utf-8")
             try:
                 data = json.loads(raw)
@@ -280,6 +341,9 @@ def _handler_factory(paths: TaskStateVaultPaths) -> type[BaseHTTPRequestHandler]
                 lang = DEFAULT_LANG
             session_token = token if token is not None else cookies.get("tsv_session", "")
             session = sessions.get(session_token or "", {})
+            if session and float(session.get("expires_at") or 0) <= time.monotonic():
+                sessions.pop(session_token or "", None)
+                session = {}
             return {
                 "loggedIn": bool(session.get("username")),
                 "username": session.get("username"),
@@ -298,16 +362,27 @@ def _handler_factory(paths: TaskStateVaultPaths) -> type[BaseHTTPRequestHandler]
             return cookies
 
         def _set_cookie(self, key: str, value: str, max_age: int | None = None) -> None:
-            cookie = f"{key}={value}; Path=/; SameSite=Lax"
+            cookie = f"{key}={value}; Path=/; SameSite=Strict; HttpOnly"
             if max_age is not None:
                 cookie += f"; Max-Age={max_age}"
             self._pending_cookie = cookie
+
+        def _validate_request_origin(self) -> None:
+            origin = (self.headers.get("Origin") or "").rstrip("/")
+            if not origin:
+                return
+            host = self.headers.get("Host") or ""
+            if origin not in {f"http://{host}", f"https://{host}"}:
+                raise ApiError(HTTPStatus.FORBIDDEN, "invalid_origin")
 
         def _send_json(self, data: dict[str, Any], status: int = HTTPStatus.OK) -> None:
             raw = json.dumps(data, ensure_ascii=False).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(raw)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
             cookie = getattr(self, "_pending_cookie", None)
             if cookie:
                 self.send_header("Set-Cookie", cookie)
@@ -322,13 +397,16 @@ def _handler_factory(paths: TaskStateVaultPaths) -> type[BaseHTTPRequestHandler]
                 rel = path.lstrip("/")
             target = (STATIC_DIR / rel).resolve()
             static_root = STATIC_DIR.resolve()
-            if not str(target).startswith(str(static_root)) or not target.exists() or target.is_dir():
+            if not target.is_relative_to(static_root) or not target.exists() or target.is_dir():
                 target = static_root / "index.html"
             if not target.exists():
                 body = _missing_build_html().encode("utf-8")
                 self.send_response(HTTPStatus.OK)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
                 self.send_header("Content-Length", str(len(body)))
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("Referrer-Policy", "no-referrer")
+                self.send_header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'")
                 self.end_headers()
                 self.wfile.write(body)
                 return
@@ -336,6 +414,13 @@ def _handler_factory(paths: TaskStateVaultPaths) -> type[BaseHTTPRequestHandler]
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", mimetypes.guess_type(str(target))[0] or "application/octet-stream")
             self.send_header("Content-Length", str(len(content)))
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
+                "img-src 'self' data:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'",
+            )
             self.end_headers()
             self.wfile.write(content)
 
@@ -364,6 +449,21 @@ def _missing_build_html() -> str:
 
 
 def build_bootstrap(paths: TaskStateVaultPaths, ctx: dict[str, Any]) -> dict[str, Any]:
+    if not ctx.get("loggedIn"):
+        return {
+            "session": ctx,
+            "settings": {},
+            "overview": {
+                "root": "",
+                "projectCount": 0,
+                "activeTasks": 0,
+                "blockedTasks": 0,
+                "queueItems": 0,
+                "hiddenCount": 0,
+                "archivedCount": 0,
+            },
+            "projects": {"projects": [], "groups": [], "hiddenProjects": [], "archivedProjects": []},
+        }
     projects = list_projects(paths, ctx, {})
     visible = projects["projects"]
     active_tasks = sum(project.get("activeTasks", 0) for project in visible)
@@ -656,9 +756,7 @@ def list_state_files(paths: TaskStateVaultPaths, ctx: dict[str, Any], query: dic
 def safe_file_path(paths: TaskStateVaultPaths, raw_path: str) -> Path:
     target = Path(raw_path).resolve()
     allowed_roots = [paths.os_dir.resolve()]
-    if paths.workspace.exists():
-        allowed_roots.append(paths.workspace.resolve())
-    if not any(str(target).startswith(str(root)) for root in allowed_roots):
+    if not any(target.is_relative_to(root) for root in allowed_roots):
         raise ApiError(HTTPStatus.FORBIDDEN, "unsafe_path")
     if not target.exists() or not target.is_file():
         raise ApiError(HTTPStatus.NOT_FOUND, "not_found")

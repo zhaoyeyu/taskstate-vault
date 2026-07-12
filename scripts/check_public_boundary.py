@@ -7,12 +7,25 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PUBLIC_FILES = [ROOT / "README.md", *sorted((ROOT / "docs").glob("*.md"))]
+PUBLIC_FILES = sorted(
+    {
+        ROOT / "README.md",
+        ROOT / "pyproject.toml",
+        ROOT / "CONTRIBUTING.md",
+        *sorted((ROOT / "docs").glob("*.md")),
+        *sorted((ROOT / "frontend" / "src").glob("*.*")),
+        *sorted((ROOT / "taskstate_vault" / "ui").glob("*.py")),
+    }
+)
 FORBIDDEN = {
     "local Windows project path": re.compile(r"[A-Za-z]:[\\/](?:myproject|Users)[\\/]"),
     "local Unix home path": re.compile(r"/home/[A-Za-z0-9._-]+/"),
     "internal release decisions": re.compile(r"Repository And Release Decisions", re.I),
     "provider budget instructions": re.compile(r"(remaining provider budget|budget guidance)", re.I),
+    "known weak UI password": re.compile(r"\b12345678\b"),
+    "OpenAI-style secret": re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{16,}\b"),
+    "GitHub token": re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),
+    "private key material": re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
 }
 
 
