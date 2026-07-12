@@ -33,6 +33,7 @@ from taskstate_vault.modes.router import detect_mode
 from taskstate_vault.mcp_adapter import list_tool_specs
 from taskstate_vault.promotion.manager import propose_promotion
 from taskstate_vault.ui.app_server import serve_ui
+from taskstate_vault.ui.server import DEFAULT_ADMIN_USERNAME, reset_admin_password
 from taskstate_vault.workspaces.registry import init_task_workspace, register_workspace
 
 
@@ -60,6 +61,12 @@ def build_parser() -> argparse.ArgumentParser:
     ui_serve = ui_sub.add_parser("serve")
     ui_serve.add_argument("--host", default="127.0.0.1")
     ui_serve.add_argument("--port", type=int, default=8765)
+    ui_serve.add_argument(
+        "--allow-network",
+        action="store_true",
+        help="Explicitly allow a non-loopback bind. Use only behind a trusted TLS-capable proxy.",
+    )
+    ui_sub.add_parser("reset-admin-password")
 
     mcp = sub.add_parser("mcp")
     mcp_sub = mcp.add_subparsers(dest="mcp_command", required=True)
@@ -284,7 +291,16 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "ui":
         if args.ui_command == "serve":
-            serve_ui(paths, args.host, args.port)
+            serve_ui(paths, args.host, args.port, allow_network=args.allow_network)
+            return 0
+        if args.ui_command == "reset-admin-password":
+            emit(
+                {
+                    "username": DEFAULT_ADMIN_USERNAME,
+                    "temporary_password": reset_admin_password(paths),
+                    "message": "Sign in with this generated password and change it from Settings.",
+                }
+            )
             return 0
 
     if args.command == "mcp":

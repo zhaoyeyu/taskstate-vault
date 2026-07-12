@@ -139,6 +139,10 @@ const copy = {
     settings: "设置",
     search: "搜索项目、任务、记录",
     login: "登录",
+    loginTitle: "解锁本地工作区",
+    loginSubtitle: "项目、任务图、执行队列和状态文件只有登录后才会加载。",
+    loginHint: "首次启动生成的管理员密码会显示在启动终端；登录后请立即在设置中更换。",
+    localOnly: "本地优先 · 默认仅监听 127.0.0.1",
     logout: "退出",
     username: "账号",
     password: "密码",
@@ -181,6 +185,10 @@ const copy = {
     hiddenBadge: "隐藏任务",
     archivedBadge: "已归档",
     empty: "暂无数据",
+    visibleProjectsNote: "可见并可操作的项目",
+    activeTasksNote: "正在执行或等待推进",
+    blockedTasksNote: "需要处理的阻塞项",
+    queuedNote: "已进入执行序列",
   },
   en: {
     app: "TaskState Vault",
@@ -196,6 +204,10 @@ const copy = {
     settings: "Settings",
     search: "Search projects, tasks, records",
     login: "Login",
+    loginTitle: "Unlock your local workspace",
+    loginSubtitle: "Projects, task graphs, queues, and state files load only after authentication.",
+    loginHint: "On first launch, the generated admin password is printed in the terminal. Change it in Settings after signing in.",
+    localOnly: "Local-first · listens on 127.0.0.1 by default",
     logout: "Logout",
     username: "Username",
     password: "Password",
@@ -238,6 +250,10 @@ const copy = {
     hiddenBadge: "Hidden",
     archivedBadge: "Archived",
     empty: "No records",
+    visibleProjectsNote: "Visible and actionable projects",
+    activeTasksNote: "Running or ready to advance",
+    blockedTasksNote: "Blockers that need attention",
+    queuedNote: "Items in the execution sequence",
   },
 };
 
@@ -274,9 +290,13 @@ export default function App() {
   const refresh = useCallback(async () => {
     const data = await api<Bootstrap>("/api/bootstrap");
     setBootstrap(data);
-    if (!selectedProjectId && data.projects.projects[0]) {
+    if (!data.session.loggedIn) {
+      setSelectedProjectId("");
+      setDetail(null);
+    } else if (!selectedProjectId && data.projects.projects[0]) {
       setSelectedProjectId(data.projects.projects[0].id);
     }
+    return data;
   }, [selectedProjectId]);
 
   useEffect(() => {
@@ -284,11 +304,14 @@ export default function App() {
   }, [refresh]);
 
   useEffect(() => {
-    if (!selectedProjectId) return;
+    if (!selectedProjectId || !bootstrap?.session.loggedIn) {
+      setDetail(null);
+      return;
+    }
     api<ProjectDetail>(`/api/projects/${encodeURIComponent(selectedProjectId)}`)
       .then(setDetail)
       .catch((err) => setError(err.message));
-  }, [selectedProjectId, bootstrap?.session.advanced]);
+  }, [selectedProjectId, bootstrap?.session.advanced, bootstrap?.session.loggedIn]);
 
   const filteredGroups = useMemo(() => {
     const groups = bootstrap?.projects.groups || [];
@@ -309,14 +332,34 @@ export default function App() {
     try {
       await fn();
       setNotice(message);
-      await refresh();
-      if (selectedProjectId) {
+      const updated = await refresh();
+      if (selectedProjectId && updated.session.loggedIn) {
         setDetail(await api<ProjectDetail>(`/api/projects/${encodeURIComponent(selectedProjectId)}`));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
   };
+
+  if (!bootstrap) {
+    return <div className="vault-loading"><div className="brand-mark">T</div><span>{t.app}</span></div>;
+  }
+
+  if (!session?.loggedIn) {
+    return (
+      <LoginScreen
+        t={t}
+        error={error}
+        onDone={refresh}
+        onError={setError}
+        onLanguage={async (nextLang) => {
+          setError("");
+          await api("/api/session/language", { method: "POST", body: JSON.stringify({ lang: nextLang }) });
+          await refresh();
+        }}
+      />
+    );
+  }
 
   return (
     <div className={`app ${collapsed ? "collapsed" : ""}`}>
@@ -366,19 +409,13 @@ export default function App() {
               {session?.advanced ? <ShieldCheck size={16} /> : <Lock size={16} />}
               {session?.advanced ? t.advanced : t.normal}
             </span>
-            {session?.loggedIn ? (
-              <>
-                <strong>{session.username}</strong>
-                <button onClick={() => runAction(() => api("/api/session/advanced", { method: "POST", body: JSON.stringify({ enabled: !session.advanced }) }))}>
-                  {session.advanced ? t.disableAdvanced : t.enableAdvanced}
-                </button>
-                <button className="ghost" onClick={() => runAction(() => api("/api/session/logout", { method: "POST" }))}>
-                  <LogOut size={17} /> {t.logout}
-                </button>
-              </>
-            ) : (
-              <LoginForm t={t} onDone={refresh} />
-            )}
+            <strong>{session.username}</strong>
+            <button onClick={() => runAction(() => api("/api/session/advanced", { method: "POST", body: JSON.stringify({ enabled: !session.advanced }) }))}>
+              {session.advanced ? t.disableAdvanced : t.enableAdvanced}
+            </button>
+            <button className="ghost" onClick={() => runAction(() => api("/api/session/logout", { method: "POST" }))}>
+              <LogOut size={17} /> {t.logout}
+            </button>
           </div>
         </header>
 
@@ -432,19 +469,63 @@ function NavItem({ id, icon, label, page, collapsed, setPage }: { id: string; ic
   );
 }
 
-function LoginForm({ t, onDone }: { t: typeof copy.zh; onDone: () => Promise<void> }) {
+function LoginScreen({
+  t,
+  error,
+  onDone,
+  onError,
+  onLanguage,
+}: {
+  t: typeof copy.zh;
+  error: string;
+  onDone: () => Promise<unknown>;
+  onError: (message: string) => void;
+  onLanguage: (lang: Lang) => Promise<void>;
+}) {
+  return (
+    <main className="login-screen">
+      <section className="login-story">
+        <div className="login-brand"><div className="brand-mark">T</div><span>{t.app}</span></div>
+        <div>
+          <span className="login-eyebrow">PROJECT OPERATIONS KERNEL</span>
+          <h1>{t.loginTitle}</h1>
+          <p>{t.loginSubtitle}</p>
+        </div>
+        <div className="local-note"><ShieldCheck size={18} /> {t.localOnly}</div>
+      </section>
+      <section className="login-panel">
+        <div className="language-switch">
+          <button className="ghost" type="button" onClick={() => onLanguage("zh")}>{t.chinese}</button>
+          <button className="ghost" type="button" onClick={() => onLanguage("en")}>{t.english}</button>
+        </div>
+        <div className="login-card">
+          <div className="login-lock"><Lock size={22} /></div>
+          <h2>{t.login}</h2>
+          <p>{t.loginHint}</p>
+          {error && <div className="login-error">{error}</div>}
+          <LoginForm t={t} onDone={onDone} onError={onError} />
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function LoginForm({ t, onDone, onError }: { t: typeof copy.zh; onDone: () => Promise<unknown>; onError: (message: string) => void }) {
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   return (
     <form
-      className="login"
+      className="login-card-form"
       onSubmit={async (event) => {
         event.preventDefault();
         setBusy(true);
+        onError("");
         try {
           await api("/api/session/login", { method: "POST", body: JSON.stringify({ username, password }) });
           await onDone();
+        } catch (err) {
+          onError(err instanceof Error ? err.message : String(err));
         } finally {
           setBusy(false);
         }
@@ -461,10 +542,10 @@ function LoginForm({ t, onDone }: { t: typeof copy.zh; onDone: () => Promise<voi
 
 function Overview({ data, t, setPage }: { data: Bootstrap; t: typeof copy.zh; setPage: (page: string) => void }) {
   const cards = [
-    [t.visibleProjects, data.overview.projectCount, "项目可见并可操作"],
-    [t.activeTasks, data.overview.activeTasks, "正在执行或等待推进"],
-    [t.blockedTasks, data.overview.blockedTasks, "需要处理阻塞"],
-    [t.queued, data.overview.queueItems, "已进入执行序列"],
+    [t.visibleProjects, data.overview.projectCount, t.visibleProjectsNote],
+    [t.activeTasks, data.overview.activeTasks, t.activeTasksNote],
+    [t.blockedTasks, data.overview.blockedTasks, t.blockedTasksNote],
+    [t.queued, data.overview.queueItems, t.queuedNote],
   ];
   return (
     <div className="stack">
@@ -877,7 +958,7 @@ function HiddenArchivePage({ mode, session, t }: { mode: "hidden" | "archive"; s
   );
 }
 
-function SettingsPage({ session, t, refresh, runAction }: { session?: Session; t: typeof copy.zh; refresh: () => Promise<void>; runAction: (fn: () => Promise<unknown>, message?: string) => Promise<void> }) {
+function SettingsPage({ session, t, refresh, runAction }: { session?: Session; t: typeof copy.zh; refresh: () => Promise<unknown>; runAction: (fn: () => Promise<unknown>, message?: string) => Promise<void> }) {
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [repeatPassword, setRepeatPassword] = useState("");

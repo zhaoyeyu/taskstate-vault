@@ -25,6 +25,7 @@ from taskstate_vault.kernel.records import add_artifact, add_evidence, log_error
 from taskstate_vault.kernel.run import finish_run, start_run
 from taskstate_vault.kernel.task import complete_task, create_task_from_queue, ensure_task_layout
 from taskstate_vault.layers.index import add_account_object
+from taskstate_vault.ui.security import is_loopback_host
 
 
 MAX_FILE_PREVIEW_BYTES = 256_000
@@ -42,7 +43,9 @@ PROJECT_CATEGORY_ALIASES: dict[str, dict[str, str]] = {}
 PROJECT_ROUTE_ALIASES: dict[str, str] = {}
 PROJECT_ROUTE_BY_ID = {project_id: route_id for route_id, project_id in PROJECT_ROUTE_ALIASES.items()}
 DEFAULT_ADMIN_USERNAME = "admin"
-DEFAULT_ADMIN_PASSWORD = "12345678"
+PASSWORD_SCHEME = "pbkdf2_sha256"
+PASSWORD_ITERATIONS = 600_000
+MIN_PASSWORD_LENGTH = 12
 
 
 TRANSLATIONS: dict[str, dict[str, str]] = {
@@ -795,7 +798,21 @@ TRANSLATIONS["en"].update(
 )
 
 
-def serve_ui(paths: TaskStateVaultPaths, host: str = "127.0.0.1", port: int = 8765) -> None:
+def serve_ui(
+    paths: TaskStateVaultPaths,
+    host: str = "127.0.0.1",
+    port: int = 8765,
+    *,
+    allow_network: bool = False,
+) -> None:
+    if not is_loopback_host(host) and not allow_network:
+        raise ValueError("Refusing a non-loopback UI bind without allow_network=True.")
+    if not is_loopback_host(host):
+        print("WARNING: network mode uses plain HTTP; place the console behind a trusted TLS proxy.")
+    initial_password = initialize_admin_account(paths)
+    if initial_password:
+        print(f"Initial admin password: {initial_password}")
+        print("Change it from Settings after the first login.")
     handler = _handler_factory(paths)
     server = ThreadingHTTPServer((host, port), handler)
     print(f"TaskState Vault UI: http://{host}:{port}")
@@ -828,24 +845,6 @@ def _log_record_state_path(paths: TaskStateVaultPaths) -> Path:
 
 def _ensure_ui_state(paths: TaskStateVaultPaths) -> None:
     ensure_dir(_ui_state_dir(paths))
-    if not _accounts_path(paths).exists():
-        salt = secrets.token_hex(16)
-        write_json(
-            _accounts_path(paths),
-            {
-                "schema_version": 1,
-                "users": {
-                    DEFAULT_ADMIN_USERNAME: {
-                        "username": DEFAULT_ADMIN_USERNAME,
-                        "role": "administrator",
-                        "password_salt": salt,
-                        "password_hash": _hash_password(DEFAULT_ADMIN_PASSWORD, salt),
-                        "created_at": now_iso(),
-                        "updated_at": now_iso(),
-                    }
-                },
-            },
-        )
     if not _visibility_path(paths).exists():
         write_json(
             _visibility_path(paths),
@@ -883,7 +882,16 @@ def _ensure_ui_state(paths: TaskStateVaultPaths) -> None:
         write_json(_log_record_state_path(paths), {"schema_version": 1, "records": {}, "audit": []})
 
 
-def _hash_password(password: str, salt: str) -> str:
+def _hash_password(password: str, salt: str, iterations: int = PASSWORD_ITERATIONS) -> str:
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        salt.encode("utf-8"),
+        iterations,
+    ).hex()
+
+
+def _legacy_hash_password(password: str, salt: str) -> str:
     return hashlib.sha256(f"{salt}:{password}".encode("utf-8")).hexdigest()
 
 
@@ -973,11 +981,84 @@ def _load_accounts(paths: TaskStateVaultPaths) -> dict[str, Any]:
     return read_json(_accounts_path(paths), default={"users": {}})
 
 
+def initialize_admin_account(paths: TaskStateVaultPaths, password: str | None = None) -> str | None:
+    """Create the first local administrator and return its generated password once."""
+
+    accounts = _load_accounts(paths)
+    users = accounts.setdefault("users", {})
+    if users:
+        return None
+    initial_password = password or secrets.token_urlsafe(18)
+    _validate_password(initial_password)
+    salt = secrets.token_hex(16)
+    now = now_iso()
+    users[DEFAULT_ADMIN_USERNAME] = {
+        "username": DEFAULT_ADMIN_USERNAME,
+        "role": "administrator",
+        "password_scheme": PASSWORD_SCHEME,
+        "password_iterations": PASSWORD_ITERATIONS,
+        "password_salt": salt,
+        "password_hash": _hash_password(initial_password, salt),
+        "created_at": now,
+        "updated_at": now,
+    }
+    accounts["schema_version"] = 2
+    write_json(_accounts_path(paths), accounts)
+    return initial_password
+
+
+def reset_admin_password(paths: TaskStateVaultPaths, password: str | None = None) -> str:
+    """Reset the local administrator to a strong generated or caller-supplied password."""
+
+    replacement = password or secrets.token_urlsafe(18)
+    _validate_password(replacement)
+    accounts = _load_accounts(paths)
+    users = accounts.setdefault("users", {})
+    existing = users.get(DEFAULT_ADMIN_USERNAME, {})
+    salt = secrets.token_hex(16)
+    now = now_iso()
+    users[DEFAULT_ADMIN_USERNAME] = {
+        "username": DEFAULT_ADMIN_USERNAME,
+        "role": "administrator",
+        "password_scheme": PASSWORD_SCHEME,
+        "password_iterations": PASSWORD_ITERATIONS,
+        "password_salt": salt,
+        "password_hash": _hash_password(replacement, salt),
+        "created_at": existing.get("created_at") or now,
+        "updated_at": now,
+    }
+    accounts["schema_version"] = 2
+    write_json(_accounts_path(paths), accounts)
+    return replacement
+
+
 def _verify_account(paths: TaskStateVaultPaths, username: str, password: str) -> bool:
-    account = _load_accounts(paths).get("users", {}).get(username)
+    accounts = _load_accounts(paths)
+    account = accounts.get("users", {}).get(username)
     if not account:
         return False
-    return account.get("password_hash") == _hash_password(password, str(account.get("password_salt", "")))
+    salt = str(account.get("password_salt", ""))
+    expected = str(account.get("password_hash", ""))
+    scheme = str(account.get("password_scheme") or "legacy_sha256")
+    if scheme == PASSWORD_SCHEME:
+        try:
+            iterations = int(account.get("password_iterations") or PASSWORD_ITERATIONS)
+        except (TypeError, ValueError):
+            return False
+        actual = _hash_password(password, salt, iterations)
+    else:
+        actual = _legacy_hash_password(password, salt)
+    verified = secrets.compare_digest(expected, actual)
+    if verified and scheme != PASSWORD_SCHEME:
+        new_salt = secrets.token_hex(16)
+        account["password_scheme"] = PASSWORD_SCHEME
+        account["password_iterations"] = PASSWORD_ITERATIONS
+        account["password_salt"] = new_salt
+        account["password_hash"] = _hash_password(password, new_salt)
+        account["updated_at"] = now_iso()
+        accounts["schema_version"] = 2
+        write_json(_accounts_path(paths), accounts)
+    return verified
 
 
 def _change_password(paths: TaskStateVaultPaths, username: str, old_password: str, new_password: str, repeated: str) -> None:
@@ -985,15 +1066,24 @@ def _change_password(paths: TaskStateVaultPaths, username: str, old_password: st
         raise ValueError("Not logged in.")
     if not new_password or new_password != repeated:
         raise ValueError("New passwords do not match.")
+    _validate_password(new_password)
     accounts = _load_accounts(paths)
     account = accounts.get("users", {}).get(username)
     if not account or not _verify_account(paths, username, old_password):
         raise ValueError("Old password is incorrect.")
     salt = secrets.token_hex(16)
+    account["password_scheme"] = PASSWORD_SCHEME
+    account["password_iterations"] = PASSWORD_ITERATIONS
     account["password_salt"] = salt
     account["password_hash"] = _hash_password(new_password, salt)
     account["updated_at"] = now_iso()
+    accounts["schema_version"] = 2
     write_json(_accounts_path(paths), accounts)
+
+
+def _validate_password(password: str) -> None:
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise ValueError(f"Password must contain at least {MIN_PASSWORD_LENGTH} characters.")
 
 
 def _parse_cookies(raw: str) -> dict[str, str]:
@@ -2322,19 +2412,23 @@ def _read_jsonl_records_tolerant(path: Path) -> list[dict[str, Any]]:
 
 
 def _log_type_from_path(path: Path) -> str:
-    text = path.as_posix().lower()
-    if "negative_cache" in text:
+    # Classify from the TaskFS path itself, not arbitrary parent directories.
+    # A checkout inside a folder such as `portfolio_audit` must not turn every
+    # evidence record into an audit log.
+    parts = {part.lower() for part in path.parts}
+    stem = path.stem.lower()
+    if "negative_cache" in parts or "negative_cache" in stem:
         return "correction"
-    if "error" in text:
-        return "error"
-    if "audit" in text:
-        return "audit"
-    if "event" in text or "/logs/" in text:
-        return "process"
-    if "resources" in text or "/evidence/" in text:
+    if "evidence" in parts or stem == "resources":
         return "evidence"
-    if "artifacts" in text or "/artifacts/" in text:
+    if "artifacts" in parts or stem == "artifacts":
         return "artifact"
+    if "errors" in parts or "error" in stem:
+        return "error"
+    if "audit" in parts or "audit" in stem:
+        return "audit"
+    if "logs" in parts or "event" in stem:
+        return "process"
     return ""
 
 

@@ -64,7 +64,15 @@ tsv --root <TASKSTATE_VAULT_REPO> ui serve --host 127.0.0.1 --port 8765
 
 Open `http://127.0.0.1:8765/`.
 
-The UI is read-only. It shows account object counts, workspace references, projects, task graph size, queue size, blockers, objective changes, task states, run counts, and selected TaskFS file previews.
+The first launch prints a generated `admin` password in the terminal. The UI keeps project and TaskFS data behind login, uses normal and advanced permission modes, and supports task-graph, queue, record, archive, and backed-up TaskFS editing workflows.
+
+If the generated credential is lost:
+
+```powershell
+tsv --root <TASKSTATE_VAULT_REPO> ui reset-admin-password
+```
+
+The server is loopback-only unless `--allow-network` is supplied explicitly. Network mode uses plain HTTP and must be placed behind a trusted TLS-capable proxy.
 
 ## MCP-Ready Adapter
 

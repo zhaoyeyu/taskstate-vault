@@ -5,7 +5,7 @@ from typing import Any
 from taskstate_vault.core.db import init_task_db, managed_connection, sync_execution_queue, sync_project_graph
 from taskstate_vault.core.io import read_jsonl
 from taskstate_vault.core.paths import TaskStateVaultPaths
-from taskstate_vault.governor.files import project_db, project_dir
+from taskstate_vault.governor.files import project_db
 from taskstate_vault.governor.graph import read_graph
 from taskstate_vault.governor.queue import read_queue
 

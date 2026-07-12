@@ -66,9 +66,26 @@ Start the local operations console:
 tsv --root <TASKSTATE_VAULT_REPO> ui serve
 ```
 
-The UI opens at `http://127.0.0.1:8765/` by default. It provides a local-first project operations console with project grouping, task DAG visualization, execution queue management, records, state-file editing, hidden items, archive management, and Chinese/English language switching.
+The UI opens at `http://127.0.0.1:8765/` by default. It provides an authenticated, local-first project operations console with project grouping, task DAG visualization, execution queue management, records, TaskFS state-file editing, hidden items, archive management, and Chinese/English language switching.
 
-The default local administrator is `admin` with password `12345678`. Change this password from the Settings page before using the console with real project data.
+On first start, the terminal prints a generated password for the local `admin` account. Sign in with it and change the password from Settings. If it is lost, generate a replacement locally:
+
+```powershell
+tsv --root <TASKSTATE_VAULT_REPO> ui reset-admin-password
+```
+
+The console refuses non-loopback binds by default. Network exposure requires the explicit `--allow-network` flag and should only be used behind a trusted TLS-capable reverse proxy.
+
+## Practical Workflow
+
+The console is organized around one operational loop:
+
+1. Group projects and inspect their current health.
+2. Model work as a task DAG and promote ready nodes into the execution queue.
+3. Record runs, errors, evidence, and artifacts against the active task.
+4. Review archived or hidden material with advanced permission.
+5. Edit only TaskFS state files, with a diff and backup before overwrite.
+6. Rebuild context or indexes and carry the next action into the following agent run.
 
 Python SDK:
 
@@ -130,6 +147,7 @@ Runtime state is created under `.taskstate-vault/` and is intentionally ignored 
 - Project file indexing
 - Context build/explain
 - Local React-based operations console
+- Generated first-run credentials, authenticated data APIs, session expiry, and loopback-only default binding
 - Public Python SDK facades: `TaskStateVault`, `TaskFS`, `TaskDB`, `ContextKernel`
 - MCP-ready JSON-callable adapter and tool metadata
 - Objective change log
@@ -139,13 +157,19 @@ Runtime state is created under `.taskstate-vault/` and is intentionally ignored 
 ## Tests
 
 ```powershell
+python -m pip install -e ".[dev]"
+ruff check taskstate_vault tests scripts
 python -B -m unittest discover -s tests -v
+cd frontend
+npm ci
+npm test
+npm run build
 ```
 
 ## Documentation
 
 - [Codex usage guide](docs/CODEX_USAGE_GUIDE.md)
-- [Product guide / ????](docs/PRODUCT_GUIDE_ZH_EN.md)
+- [Product guide / 产品指南](docs/PRODUCT_GUIDE_ZH_EN.md)
 - [Custom instructions draft](docs/CODEX_CUSTOM_INSTRUCTIONS_DRAFT.md)
 - [Project structure](docs/PROJECT_STRUCTURE.md)
 - [Packaging model](docs/PACKAGING_MODEL.md)

@@ -25,5 +25,11 @@ class TaskStateVault:
     def status(self, project_id: str | None = None) -> dict:
         return self.taskfs.status(project_id)
 
-    def serve_ui(self, host: str = "127.0.0.1", port: int = 8765) -> None:
-        serve_ui(self.paths, host, port)
+    def serve_ui(
+        self,
+        host: str = "127.0.0.1",
+        port: int = 8765,
+        *,
+        allow_network: bool = False,
+    ) -> None:
+        serve_ui(self.paths, host, port, allow_network=allow_network)

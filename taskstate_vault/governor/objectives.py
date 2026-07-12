@@ -7,7 +7,7 @@ from taskstate_vault.core.ids import make_id
 from taskstate_vault.core.io import append_jsonl
 from taskstate_vault.core.timeutil import now_iso
 from taskstate_vault.governor.files import objective_log_path, project_event_log
-from taskstate_vault.governor.graph import find_node, read_graph, update_node, write_graph
+from taskstate_vault.governor.graph import find_node, read_graph, update_node
 from taskstate_vault.governor.progress import project_progress
 from taskstate_vault.governor.queue import schedule_queue
 

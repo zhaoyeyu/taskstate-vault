@@ -3,20 +3,20 @@
   font-family:
     Inter, "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", system-ui,
     -apple-system, BlinkMacSystemFont, sans-serif;
-  --bg: #f5f7fb;
+  --bg: #f1f5f7;
   --surface: #ffffff;
   --surface-2: #eef3f7;
-  --nav: #0d1e2a;
-  --nav-2: #132b3a;
+  --nav: #0b2630;
+  --nav-2: #123b45;
   --text: #122033;
   --muted: #637083;
   --line: #d8e0ea;
-  --accent: #087f92;
-  --accent-2: #0f6b8f;
+  --accent: #0b8178;
+  --accent-2: #0d6f78;
   --good: #0f7b5f;
   --warn: #b7791f;
   --danger: #b42318;
-  --shadow: 0 14px 35px rgba(22, 33, 48, 0.08);
+  --shadow: 0 18px 48px rgba(18, 50, 58, 0.1);
 }
 
 * {
@@ -32,7 +32,9 @@ body,
 }
 
 body {
-  background: var(--bg);
+  background:
+    radial-gradient(circle at 82% 2%, rgba(18, 147, 133, 0.1), transparent 30rem),
+    var(--bg);
   color: var(--text);
 }
 
@@ -48,7 +50,7 @@ button {
   border: 1px solid var(--accent);
   background: var(--accent);
   color: #fff;
-  border-radius: 7px;
+  border-radius: 10px;
   padding: 0 14px;
   display: inline-flex;
   align-items: center;
@@ -57,6 +59,12 @@ button {
   cursor: pointer;
   font-weight: 650;
   white-space: nowrap;
+  transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(11, 129, 120, 0.15);
 }
 
 button:disabled {
@@ -81,7 +89,7 @@ textarea {
   border: 1px solid var(--line);
   background: #fff;
   color: var(--text);
-  border-radius: 7px;
+  border-radius: 10px;
   min-height: 38px;
   padding: 8px 11px;
   outline: none;
@@ -105,7 +113,9 @@ textarea:focus {
 }
 
 .sidebar {
-  background: var(--nav);
+  background:
+    radial-gradient(circle at 10% 0%, rgba(45, 184, 167, 0.17), transparent 18rem),
+    linear-gradient(180deg, var(--nav), #0b202a 100%);
   color: #eaf4fb;
   min-width: 0;
   padding: 18px 14px;
@@ -113,6 +123,7 @@ textarea:focus {
   flex-direction: column;
   gap: 22px;
   overflow: hidden;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .brand {
@@ -129,7 +140,7 @@ textarea:focus {
 .brand-mark {
   width: 36px;
   height: 36px;
-  border-radius: 8px;
+  border-radius: 11px;
   display: grid;
   place-items: center;
   background: #e7f7fb;
@@ -207,7 +218,8 @@ main {
   gap: 14px;
   justify-content: space-between;
   padding: 14px 24px;
-  background: rgba(255, 255, 255, 0.94);
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(18px);
   border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
@@ -222,7 +234,7 @@ main {
   gap: 10px;
   background: var(--surface-2);
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 0 12px;
 }
 
@@ -311,14 +323,28 @@ main {
 
 .hero {
   min-height: 132px;
-  background: #0e2a39;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(118deg, #0d3540 0%, #0b6f68 100%);
   color: #fff;
-  border-radius: 8px;
+  border-radius: 20px;
   padding: 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   box-shadow: var(--shadow);
+}
+
+.hero::after {
+  content: "";
+  position: absolute;
+  width: 240px;
+  height: 240px;
+  right: -90px;
+  top: -145px;
+  border: 38px solid rgba(255, 255, 255, 0.06);
+  border-radius: 50%;
+  pointer-events: none;
 }
 
 .hero h1 {
@@ -353,8 +379,8 @@ main {
 .graph-shell {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 8px;
-  box-shadow: 0 1px 0 rgba(22, 33, 48, 0.03);
+  border-radius: 14px;
+  box-shadow: 0 8px 28px rgba(22, 50, 58, 0.045);
 }
 
 .metric {
@@ -363,6 +389,12 @@ main {
   display: flex;
   flex-direction: column;
   gap: 7px;
+  transition: transform 140ms ease, box-shadow 140ms ease;
+}
+
+.metric:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 32px rgba(22, 50, 58, 0.09);
 }
 
 .metric span,
@@ -417,7 +449,7 @@ small {
 
 details {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
   background: #fff;
 }
@@ -517,7 +549,7 @@ summary em {
 .canvas {
   min-height: 520px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 12px;
   overflow: hidden;
   background: #fbfdff;
 }
@@ -758,7 +790,173 @@ label {
   color: var(--muted);
   border: 1px dashed var(--line);
   background: #fff;
-  border-radius: 8px;
+  border-radius: 14px;
+}
+
+.vault-loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--muted);
+  font-weight: 750;
+  letter-spacing: 0.02em;
+}
+
+.login-screen {
+  min-height: 100vh;
+  height: auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(420px, 0.8fr);
+  grid-template-rows: 1fr;
+  overflow: auto;
+  background: #0b2731;
+}
+
+.login-story {
+  position: relative;
+  overflow: hidden;
+  min-height: 100vh;
+  padding: clamp(32px, 7vw, 104px);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 48px;
+  color: #fff;
+  background:
+    radial-gradient(circle at 80% 14%, rgba(72, 211, 190, 0.2), transparent 24rem),
+    linear-gradient(140deg, #0a2530 0%, #0b4e50 100%);
+}
+
+.login-story::after {
+  content: "";
+  position: absolute;
+  width: 520px;
+  height: 520px;
+  right: -260px;
+  bottom: -280px;
+  border: 80px solid rgba(255, 255, 255, 0.045);
+  border-radius: 50%;
+}
+
+.login-brand {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.login-story .brand-mark {
+  background: #d9fbf4;
+  color: #0b4947;
+}
+
+.login-eyebrow {
+  color: #8be2d4;
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.18em;
+}
+
+.login-story h1 {
+  max-width: 720px;
+  margin: 18px 0 20px;
+  font-size: clamp(42px, 6vw, 76px);
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+}
+
+.login-story p {
+  max-width: 620px;
+  margin: 0;
+  color: #cce4e2;
+  font-size: 17px;
+  line-height: 1.75;
+}
+
+.local-note {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #b9d8d5;
+  font-size: 13px;
+}
+
+.login-panel {
+  min-height: 100vh;
+  padding: clamp(24px, 5vw, 72px);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 24px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(11, 129, 120, 0.08), transparent 24rem),
+    #f5f8f8;
+}
+
+.language-switch {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.login-card {
+  width: min(100%, 470px);
+  margin: 0 auto;
+  padding: clamp(28px, 4vw, 46px);
+  border: 1px solid rgba(32, 71, 78, 0.12);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 30px 80px rgba(18, 50, 58, 0.12);
+}
+
+.login-lock {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  border-radius: 14px;
+  background: #e3f5f2;
+}
+
+.login-card h2 {
+  margin: 24px 0 10px;
+  font-size: 28px;
+  letter-spacing: -0.035em;
+}
+
+.login-card > p {
+  margin: 0 0 24px;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.login-card-form {
+  display: grid;
+  gap: 12px;
+}
+
+.login-card-form button {
+  min-height: 44px;
+  margin-top: 4px;
+}
+
+.login-error {
+  margin-bottom: 16px;
+  padding: 11px 13px;
+  color: #8d1f16;
+  border: 1px solid #f4b8b2;
+  border-radius: 10px;
+  background: #fff1f0;
+  font-size: 13px;
 }
 
 @media (max-width: 1180px) {
@@ -773,25 +971,33 @@ label {
 }
 
 @media (max-width: 820px) {
+  html,
+  body,
+  #root {
+    height: auto;
+    min-height: 100%;
+  }
+
   .app,
   .app.collapsed {
+    height: auto;
+    min-height: 100vh;
     grid-template-columns: 1fr;
   }
 
   .sidebar {
-    position: sticky;
-    top: 0;
-    z-index: 50;
+    position: static;
     height: auto;
     padding: 10px;
-    min-height: 64px;
+    min-height: 0;
+    overflow: visible;
   }
 
   nav {
     display: grid;
-    grid-template-columns: repeat(9, minmax(44px, 1fr));
+    grid-template-columns: repeat(5, minmax(44px, 1fr));
     gap: 6px;
-    overflow-x: auto;
+    overflow: visible;
   }
 
   nav button,
@@ -809,9 +1015,17 @@ label {
     display: none;
   }
 
+  main {
+    height: auto;
+    min-height: 0;
+    grid-template-rows: auto auto;
+    overflow: visible;
+  }
+
   .topbar {
     align-items: stretch;
     flex-direction: column;
+    padding: 12px;
   }
 
   .session,
@@ -829,12 +1043,15 @@ label {
   }
 
   .hero {
+    align-items: flex-start;
+    flex-direction: column;
     gap: 16px;
     padding: 24px;
   }
 
   .hero button {
-    min-width: 126px;
+    width: 100%;
+    min-width: 0;
     padding: 0 10px;
   }
 
@@ -846,5 +1063,34 @@ label {
 
   .workspace {
     padding: 12px;
+    overflow: visible;
+  }
+
+  .content,
+  .drawer {
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .login-screen {
+    grid-template-columns: 1fr;
+  }
+
+  .login-story,
+  .login-panel {
+    min-height: auto;
+  }
+
+  .login-story {
+    padding: 34px 24px;
+    gap: 30px;
+  }
+
+  .login-story h1 {
+    font-size: 42px;
+  }
+
+  .login-panel {
+    padding: 28px 18px 48px;
   }
 }
